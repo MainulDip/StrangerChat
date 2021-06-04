@@ -2,7 +2,7 @@ import path from 'path'
 import http from 'http'
 import express from 'express'
 import { Server, Socket } from 'socket.io'
-
+import { PeerServer } from 'peer';
 import formatMessage from './utils/message'
 import { User, getCurrentUser, userJoin, getRoomUsers, userLeave } from './utils/users'
 
@@ -11,15 +11,25 @@ const server = http.createServer(app)
 
 const io = new Server(server)
 
+// Peer Server 
+const peerServer = PeerServer({
+    port: 7001,
+    path: '/'
+});
+
 
 const botname: string = 'Admin'
+
+
+
 // Set client folder
 app.use(express.static(path.join(__dirname, 'static')))
 
 // Run when cliens conntec
 io.on('connection', (socket: Socket) => {
+    socket.emit('id-merge', socket.id)
     console.log('New Socket Connection')
-    socket.on('joinRoom', ({ username, room }: { username: string, room: string }) => {
+    socket.on('joinRoom', ({ username, room }: { username: string, room: string, socketId: string }) => {
 
         const user = userJoin(socket.id, username, room)
 
@@ -49,8 +59,6 @@ io.on('connection', (socket: Socket) => {
                 })
             }
             // io.to(user!.room).emit('message', formatMessage(botname, `${user!.username} Diconnected`))
-
-
         })
 
         // when user connects inform all
@@ -60,6 +68,24 @@ io.on('connection', (socket: Socket) => {
         io.to(user.room).emit('roomUsers', {
             room: user.room,
             users: getRoomUsers(user.room)
+        })
+
+        socket.on('peerId', id => {
+            // console.log(id)
+            socket.broadcast.to(user.room).emit('video-call-connect', id)
+            peerServer.on('disconnect', (client: any) => {
+                console.log('disconnected client ', client.id)
+                socket.broadcast.to(user.room).emit('video-call-ended', client.id)
+            });
+
+        })
+        socket.on('call-initiate', id => {
+            // console.log(id)
+            socket.emit('call-now', 'call-now')
+        })
+        socket.on('disconnected', msg => {
+            console.log(msg)
+
         })
     })
     // socket.emit('message', formatMessage(botname, 'Welcome'))
@@ -78,6 +104,7 @@ io.on('connection', (socket: Socket) => {
 
 })
 
-const PORT = 3000 || process.env.PORT
+const PORT = 7000 || process.env.PORT
 
 server.listen(PORT, () => console.log(`Server Running On PORT ${PORT}`))
+
